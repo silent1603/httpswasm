@@ -1,0 +1,13 @@
+{
+    "configurations": [
+        {
+            "name": "Wasm",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/tools/emsdk/upstream/emscripten/system/include/**"
+            ],
+            "defines": ["__EMSCRIPTEN__"]
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "key_codes.h": "c",
+        "xiosbase": "cpp"
+    }
+}
