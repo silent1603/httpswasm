@@ -4,7 +4,7 @@
             "name": "Wasm",
             "includePath": [
                 "${workspaceFolder}/src",
-                "${workspaceFolder}/tools/emsdk/upstream/emscripten/system/include/**"
+                "~/Tools/emsdk/upstream/emscripten/system/include/**"
             ],
             "defines": ["__EMSCRIPTEN__"]
         }
