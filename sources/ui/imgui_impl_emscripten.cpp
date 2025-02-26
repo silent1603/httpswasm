@@ -9,6 +9,7 @@
 
 #include "imgui.h"
 #ifndef IMGUI_DISABLE
+#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 #include "imgui_impl_emscripten.h"
 #include <stdio.h>
 #include <emscripten.h>
@@ -19,10 +20,13 @@
 
 const float DEADZONE = 0.3f; // Adjust to taste
 
+EM_JS(void, ImGui_ImplEmscripten_OpenURL, (char const* url), { url = url ? UTF8ToString(url) : null; if (url) window.open(url, '_blank'); });
+
 struct ImGui_ImplEmscripten_Data
 {
-    bool MouseTracked;
+    bool             MouseTracked;
     ImGuiMouseCursor LastMouseCursor;
+    const char*      CanvasSelector;
     uint64_t Time = 0;
     double TicksPerSecond = 1000000000.0;
     ImGui_ImplEmscripten_Data() { memset((void *)this, 0, sizeof(*this)); }
@@ -32,12 +36,17 @@ struct ImGui_ImplEmscripten_Data
 // It is STRONGLY preferred that you use docking branch with multi-viewports (== single Dear ImGui context + multiple windows) instead of multiple Dear ImGui contexts.
 // FIXME: multi-context support is not well tested and probably dysfunctional in this backend.
 // FIXME: some shared resources (mouse cursor shape, gamepad) are mishandled when using multi-context.
-static ImGui_ImplEmscripten_Data *ImGui_ImplEmscripten_GetBackendData()
+static ImGui_ImplEmscripten_Data* ImGui_ImplEmscripten_GetBackendData()
 {
     return ImGui::GetCurrentContext() ? (ImGui_ImplEmscripten_Data *)ImGui::GetIO().BackendPlatformUserData : NULL;
 }
 
-// Map XK_xxx to ImGuiKey_xxx.
+static bool ImGui_ImplEmscripten_PlatformOpenInShell(ImGuiContext* context,const char* url)
+{
+    ImGui_ImplEmscripten_OpenURL(url); 
+   return true;
+}
+
 static ImGuiKey ImGui_ImplEmscripten_VirtualKeyToImGuiKey(uint32_t param)
 {
     switch (param)
@@ -245,9 +254,20 @@ static ImGuiKey ImGui_ImplEmscripten_VirtualKeyToImGuiKey(uint32_t param)
     }
 }
 
+static void ImGui_ImplEmscripten_UpdateKeyModifiers(const EmscriptenKeyboardEvent *event, bool is_key_down)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiMod_Ctrl, event->ctrlKey);
+    io.AddKeyEvent(ImGuiMod_Shift, event->shiftKey);
+    io.AddKeyEvent(ImGuiMod_Alt, event->altKey);
+    io.AddKeyEvent(ImGuiMod_Super, event->metaKey);
+}
+
+
 static int ImGui_ImplEmscripten_HandleKeyEvent(const EmscriptenKeyboardEvent *event, bool is_key_down)
 {
-    ImGuiIO &io = ImGui::GetIO();
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui_ImplEmscripten_UpdateKeyModifiers(event,is_key_down);
     int key = event->keyCode;
     const ImGuiKey imguiKey = ImGui_ImplEmscripten_VirtualKeyToImGuiKey(key);
     io.AddKeyEvent(imguiKey, is_key_down);
@@ -259,6 +279,7 @@ static int ImGui_ImplEmscripten_HandleKeyEvent(const EmscriptenKeyboardEvent *ev
 static EM_BOOL ImGui_ImplEmscripten_KeyboardCallback(int eventType, const EmscriptenKeyboardEvent *keyEvent, void *userData)
 {
     bool is_key_down = (eventType == EMSCRIPTEN_EVENT_KEYDOWN);
+    ImGui_ImplEmscripten_UpdateKeyModifiers(keyEvent,is_key_down);
     ImGui_ImplEmscripten_HandleKeyEvent(keyEvent, is_key_down);
     return EM_TRUE; // Capture event
 }
@@ -281,10 +302,13 @@ static EM_BOOL ImGui_ImplEmscripten_MouseCallback(int eventType, const Emscripte
 static EM_BOOL ImGui_ImplEmscripten_WhellCallback(int eventType, const EmscriptenWheelEvent *wheelEvent, void *userData)
 {
     ImGuiIO &io = ImGui::GetIO();
-    if (eventType == EMSCRIPTEN_EVENT_WHEEL)
-    {
-        io.AddMouseWheelEvent(wheelEvent->deltaX, wheelEvent->deltaY);
-    }
+    float multiplier = 0.0f;
+    if (wheelEvent->deltaMode == DOM_DELTA_PIXEL)       { multiplier = 1.0f / 100.0f; } // 100 pixels make up a step.
+    else if (wheelEvent->deltaMode == DOM_DELTA_LINE)   { multiplier = 1.0f / 3.0f; }   // 3 lines make up a step.
+    else if (wheelEvent->deltaMode == DOM_DELTA_PAGE)   { multiplier = 80.0f; }         // A page makes up 80 steps.
+    float wheel_x = wheelEvent->deltaX * -multiplier;
+    float wheel_y = wheelEvent->deltaY * -multiplier;
+    io.AddMouseWheelEvent(wheel_x, wheel_y);
     return EM_TRUE;
 }
 
@@ -385,6 +409,7 @@ static EM_BOOL ImGui_ImplEmscripten_FocusInCallback(int eventType, const Emscrip
     ImGuiIO &io = ImGui::GetIO();
     ImGui_ImplEmscripten_Data *bd = ImGui_ImplEmscripten_GetBackendData();
     bd->MouseTracked = true;
+    io.AddFocusEvent(true);
     return EM_TRUE;
 }
 
@@ -393,6 +418,7 @@ static EM_BOOL ImGui_ImplEmscripten_FocusOutCallback(int eventType, const Emscri
     ImGuiIO &io = ImGui::GetIO();
     ImGui_ImplEmscripten_Data *bd = ImGui_ImplEmscripten_GetBackendData();
     bd->MouseTracked = false;
+    io.AddFocusEvent(false);
     return EM_TRUE;
 }
 
@@ -450,18 +476,21 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init()
     io.BackendPlatformName = "imgui_impl_Emscripten";
     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors; // We can honor GetMouseCursor() values (optional)
     io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;  // We can honor io.WantSetMousePos requests (optional, rarely used)
-    io.GetClipboardTextFn = NULL;
-    io.SetClipboardTextFn = NULL;
+    
+    ImGuiPlatformIO& platform = ImGui::GetPlatformIO();
+
+    platform.Platform_GetClipboardTextFn = NULL;
+    platform.Platform_SetClipboardTextFn = NULL;
+    platform.Platform_OpenInShellFn = ImGui_ImplEmscripten_PlatformOpenInShell;
 
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyboardCallback);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyboardCallback);
     emscripten_set_mousedown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
     emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
     emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
+    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
     emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadCallback);
     emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadCallback);
-    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
     emscripten_set_focusin_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusInCallback);
     emscripten_set_focusout_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusOutCallback);
 
@@ -488,7 +517,6 @@ IMGUI_IMPL_API void ImGui_ImplEmscripten_Shutdown()
     emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, nullptr);
-    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_focusin_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
     emscripten_set_focusout_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
     IM_DELETE(bd);

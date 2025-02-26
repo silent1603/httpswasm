@@ -6,6 +6,7 @@
 #include <GLES2/gl2ext.h>
 #include <GLES2/gl2platform.h>
 #include <stdio.h>
+#define IMGUI_IMPL_OPENGL_ES3
 #include "ui/imgui.h"
 #include "ui/imgui_impl_opengl3.h"
 #include "ui/imgui_impl_emscripten.h"
@@ -38,7 +39,7 @@ bool initialize_webgl()
     webgl_attributes.failIfMajorPerformanceCaveat = 0;
     webgl_attributes.enableExtensionsByDefault = 1;
     webgl_attributes.premultipliedAlpha = 0;
-    webgl_attributes.majorVersion = 1;
+    webgl_attributes.majorVersion = 2;
     webgl_attributes.minorVersion = 0;
 
     webgl_context = emscripten_webgl_create_context("#canvas", &webgl_attributes);
