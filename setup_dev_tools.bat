@@ -1,3 +1,4 @@
 @echo off
 
-call tools/emsdk/emsdk_env.bat
+call tools/emsdk/emsdk.bat activate latest
+ 
