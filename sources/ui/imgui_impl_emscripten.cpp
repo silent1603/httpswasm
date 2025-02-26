@@ -343,6 +343,8 @@ static EM_BOOL ImGui_ImplEmscripten_KeyPressCallback(int eventType, const Emscri
 static EM_BOOL ImGui_ImplEmscripten_MouseCallback(int eventType, const EmscriptenMouseEvent *mouseEvent, void *userData)
 {
     ImGuiIO &io = ImGui::GetIO();
+    ImGui_ImplEmscripten_Data *bd = ImGui_ImplEmscripten_GetBackendData();
+
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN || eventType == EMSCRIPTEN_EVENT_MOUSEUP)
     {
         ImGuiMouseButton button = (mouseEvent->button == 0) ? ImGuiMouseButton_Left : (mouseEvent->button == 2 ? ImGuiMouseButton_Right : ImGuiMouseButton_Middle);
@@ -350,7 +352,7 @@ static EM_BOOL ImGui_ImplEmscripten_MouseCallback(int eventType, const Emscripte
     }
     else if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE)
     {
-        io.AddMousePosEvent(mouseEvent->clientX, mouseEvent->clientY);
+        io.AddMousePosEvent( mouseEvent->targetX,mouseEvent->targetY);
     }
     return EM_TRUE;
 }
@@ -531,7 +533,7 @@ static void ImGui_ImplEmscripten_UpdateMouseData()
         if ((emscripten_get_mouse_status(&mouseEvent) == EMSCRIPTEN_RESULT_SUCCESS) ||
             (emscripten_get_pointerlock_status(&plEvent) == EMSCRIPTEN_RESULT_SUCCESS && plEvent.isActive))
         {
-            io.AddMousePosEvent((float)mouseEvent.clientX, (float)mouseEvent.clientY);
+            io.AddMousePosEvent(mouseEvent.targetX, mouseEvent.targetY);
         }
     }
 }
@@ -562,7 +564,7 @@ static void ImGui_ImplEmscripten_UpdateGamepads()
     }
 }
 
-IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init()
+IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init(const char* canvasSelector)
 {
     ImGuiIO &io = ImGui::GetIO();
     IM_ASSERT(io.BackendPlatformUserData == NULL && "Already initialized a platform backend!");
@@ -580,25 +582,28 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init()
     platform.Platform_SetClipboardTextFn = NULL;
     platform.Platform_OpenInShellFn = ImGui_ImplEmscripten_PlatformOpenInShell;
 
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyDownCallback);
-    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyPressCallback);
-    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyUpCallback);
-    emscripten_set_mousedown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_touchstart_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_touchend_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_touchmove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_touchcancel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
-    emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadConnectedCallback);
-    emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadDisconnectCallback);
-    emscripten_set_focusin_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusInCallback);
-    emscripten_set_focusout_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusOutCallback);
-
     //TODO :: init mouse course
     //
     bd->Time = 0;
+    bd->CanvasSelector = canvasSelector;
+    
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyDownCallback);
+    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyPressCallback);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyUpCallback);
+    emscripten_set_mousedown_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
+    emscripten_set_mouseup_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
+    emscripten_set_mousemove_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
+    emscripten_set_touchstart_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchend_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchmove_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchcancel_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_wheel_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
+    emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadConnectedCallback);
+    emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadDisconnectCallback);
+    emscripten_set_focusin_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusInCallback);
+    emscripten_set_focusout_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusOutCallback);
+
+
     return true;
 }
 
@@ -615,18 +620,18 @@ IMGUI_IMPL_API void ImGui_ImplEmscripten_Shutdown()
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
-    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
-    emscripten_set_touchstart_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
-    emscripten_set_touchend_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
-    emscripten_set_touchmove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
-    emscripten_set_touchcancel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
-    emscripten_set_mousedown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
-    emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
-    emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
+    emscripten_set_wheel_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
+    emscripten_set_touchstart_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
+    emscripten_set_touchend_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
+    emscripten_set_touchmove_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
+    emscripten_set_touchcancel_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
+    emscripten_set_mousedown_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
+    emscripten_set_mouseup_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
+    emscripten_set_mousemove_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, nullptr);
-    emscripten_set_focusin_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
-    emscripten_set_focusout_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
+    emscripten_set_focusin_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
+    emscripten_set_focusout_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
     IM_DELETE(bd);
 }
 

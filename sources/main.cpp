@@ -68,7 +68,7 @@ bool app_init()
     io.IniFilename = nullptr;                             // Disable saving .ini
 
     ImGui::StyleColorsDark();
-    ImGui_ImplEmscripten_Init();
+    ImGui_ImplEmscripten_Init("#canvas");
     ImGui_ImplOpenGL3_Init(get_glsl_version());
     running = true;
     return true;
