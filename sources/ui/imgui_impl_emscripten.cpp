@@ -307,7 +307,7 @@ static EM_BOOL ImGui_ImplEmscripten_KeyDownCallback(int eventType, const Emscrip
     int key = keyEvent->keyCode;
     const ImGuiKey imguiKey = ImGui_ImplEmscripten_VirtualKeyToImGuiKey(key);
     io.AddKeyEvent(imguiKey, true);
-    if (keyEvent->key && *keyEvent->key && !ImGui_ImplEmscripten_FilterInputKeyCode(keyEvent))
+    if (*keyEvent->key && !ImGui_ImplEmscripten_FilterInputKeyCode(keyEvent))
     {
         const char* utf8 = keyEvent->key;
         unsigned int codepoint = 0;
@@ -464,6 +464,7 @@ static EM_BOOL ImGui_ImplEmscripten_GamepadDisconnectCallback(int eventType, con
 {
     ImGuiIO &io = ImGui::GetIO();
     io.BackendFlags  &= ~ImGuiBackendFlags_HasGamepad;
+    return EM_TRUE;
 }
 
 static EM_BOOL ImGui_ImplEmscripten_FocusInCallback(int eventType, const EmscriptenFocusEvent *focusEvent, void *userData)
