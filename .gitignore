@@ -32,3 +32,7 @@
 *.app
 
 Tools/
+
+bin/index.html
+bin/index.js
+bin/index.wasm
