@@ -10,10 +10,13 @@
 #include "ui/imgui.h"
 #include "ui/imgui_impl_opengl3.h"
 #include "ui/imgui_impl_emscripten.h"
-
+#include <iostream>
 ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 EmscriptenWebGLContextAttributes webgl_attributes;
 EMSCRIPTEN_WEBGL_CONTEXT_HANDLE webgl_context;
+static bool show_demo_window = true;
+static bool show_another_window = false;
+static bool running = false;
 
 const char *get_glsl_version()
 {
@@ -21,8 +24,6 @@ const char *get_glsl_version()
     return "#version 100"; // WebGL 1.0
 #elif defined(IMGUI_IMPL_OPENGL_ES3)
     return "#version 300 es"; // WebGL 2.0
-#elif defined(__APPLE__)
-    return "#version 150"; // Mac (GL 3.2 + GLSL 150)
 #else
     return "#version 130"; // GL 3.0 + GLSL 130
 #endif
@@ -30,6 +31,9 @@ const char *get_glsl_version()
 
 bool initialize_webgl()
 {
+#ifdef DEBUG
+    emscripten_set_canvas_size(1720,980);
+#endif
     emscripten_webgl_init_context_attributes(&webgl_attributes);
     webgl_attributes.alpha = 0;
     webgl_attributes.depth = 0;
@@ -66,7 +70,7 @@ bool app_init()
     ImGui::StyleColorsDark();
     ImGui_ImplEmscripten_Init();
     ImGui_ImplOpenGL3_Init(get_glsl_version());
-
+    running = true;
     return true;
 }
 
@@ -81,10 +85,13 @@ void render_frame()
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     emscripten_webgl_commit_frame();
 }
-static bool show_demo_window = true;
-static bool show_another_window = false;
+
 void app_update()
 {
+    if (!running)
+    {
+        emscripten_cancel_main_loop();
+    }
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplEmscripten_NewFrame();
     ImGui::NewFrame();

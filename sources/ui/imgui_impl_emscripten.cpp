@@ -5,7 +5,7 @@
 //  [X] Platform: Clipboard support
 //  [ ] Platform: Mouse cursor shape and visibility. Disable with XK_io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange'.
 //  [X] Platform: Keyboard arrays indexed using
-//  [X] Platform: Gamepad support. Enabled with XK_io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad'.
+//  [X] Platform: Gamepad support. 
 
 #include "imgui.h"
 #ifndef IMGUI_DISABLE
@@ -17,7 +17,6 @@
 #include <emscripten/key_codes.h>
 #include <emscripten/html5.h>
 #include <math.h>
-
 const float DEADZONE = 0.3f; // Adjust to taste
 
 EM_JS(void, ImGui_ImplEmscripten_OpenURL, (char const* url), { url = url ? UTF8ToString(url) : null; if (url) window.open(url, '_blank'); });
@@ -25,10 +24,9 @@ EM_JS(void, ImGui_ImplEmscripten_OpenURL, (char const* url), { url = url ? UTF8T
 struct ImGui_ImplEmscripten_Data
 {
     bool             MouseTracked;
-    ImGuiMouseCursor LastMouseCursor;
+    ImGuiMouseCursor MouseCursors[ImGuiMouseCursor_COUNT];
     const char*      CanvasSelector;
-    uint64_t Time = 0;
-    double TicksPerSecond = 1000000000.0;
+    double          Time ;
     ImGui_ImplEmscripten_Data() { memset((void *)this, 0, sizeof(*this)); }
 };
 
@@ -45,6 +43,35 @@ static bool ImGui_ImplEmscripten_PlatformOpenInShell(ImGuiContext* context,const
 {
     ImGui_ImplEmscripten_OpenURL(url); 
    return true;
+}
+
+static bool ImGui_ImplEmscripten_FilterInputKeyCode(const EmscriptenKeyboardEvent* keyEvent)
+{
+    // Filter by key codes for non-printable keys
+    switch (keyEvent->keyCode)
+    {
+        case DOM_VK_RETURN: // Enter
+        case DOM_VK_TAB:  // Tab
+        case DOM_VK_SHIFT: // Shift
+        case DOM_VK_CONTROL: // Control
+        case DOM_VK_ALT: // Alt
+        case DOM_VK_CAPS_LOCK: // CapsLock
+        case DOM_VK_ESCAPE: // Escape
+        case DOM_VK_LEFT: // ArrowLeft
+        case DOM_VK_UP: // ArrowUp
+        case DOM_VK_RIGHT: // ArrowRight
+        case DOM_VK_DOWN: // ArrowDown
+        case DOM_VK_BACK_SPACE:  // Backspace
+        case DOM_VK_DELETE: // Delete
+        case DOM_VK_HOME: // Home
+        case DOM_VK_END: // End
+        case DOM_VK_PAGE_UP: // PageUp
+        case DOM_VK_PAGE_DOWN: // PageDown
+        case DOM_VK_WIN: // Meta (Windows/Command key)
+        case DOM_VK_CONTEXT_MENU: // ContextMenu
+            return true; // Filter out these keys (do not treat them as text input)
+    }
+    return false; // Let other keys pass through
 }
 
 static ImGuiKey ImGui_ImplEmscripten_VirtualKeyToImGuiKey(uint32_t param)
@@ -254,7 +281,7 @@ static ImGuiKey ImGui_ImplEmscripten_VirtualKeyToImGuiKey(uint32_t param)
     }
 }
 
-static void ImGui_ImplEmscripten_UpdateKeyModifiers(const EmscriptenKeyboardEvent *event, bool is_key_down)
+static void ImGui_ImplEmscripten_UpdateKeyModifiers(const EmscriptenKeyboardEvent *event)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.AddKeyEvent(ImGuiMod_Ctrl, event->ctrlKey);
@@ -263,24 +290,53 @@ static void ImGui_ImplEmscripten_UpdateKeyModifiers(const EmscriptenKeyboardEven
     io.AddKeyEvent(ImGuiMod_Super, event->metaKey);
 }
 
-
-static int ImGui_ImplEmscripten_HandleKeyEvent(const EmscriptenKeyboardEvent *event, bool is_key_down)
+static EM_BOOL ImGui_ImplEmscripten_KeyUpCallback(int eventType, const EmscriptenKeyboardEvent *keyEvent, void *userData)
 {
     ImGuiIO& io = ImGui::GetIO();
-    ImGui_ImplEmscripten_UpdateKeyModifiers(event,is_key_down);
-    int key = event->keyCode;
+    ImGui_ImplEmscripten_UpdateKeyModifiers(keyEvent);
+    int key = keyEvent->keyCode;
     const ImGuiKey imguiKey = ImGui_ImplEmscripten_VirtualKeyToImGuiKey(key);
-    io.AddKeyEvent(imguiKey, is_key_down);
-    if (is_key_down && event->charCode)
-        io.AddInputCharacter(event->charCode);
-    return 1;
+    io.AddKeyEvent(imguiKey, false);
+    return EM_TRUE; // Capture event
 }
 
-static EM_BOOL ImGui_ImplEmscripten_KeyboardCallback(int eventType, const EmscriptenKeyboardEvent *keyEvent, void *userData)
+static EM_BOOL ImGui_ImplEmscripten_KeyDownCallback(int eventType, const EmscriptenKeyboardEvent *keyEvent, void *userData)
 {
-    bool is_key_down = (eventType == EMSCRIPTEN_EVENT_KEYDOWN);
-    ImGui_ImplEmscripten_UpdateKeyModifiers(keyEvent,is_key_down);
-    ImGui_ImplEmscripten_HandleKeyEvent(keyEvent, is_key_down);
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui_ImplEmscripten_UpdateKeyModifiers(keyEvent);
+    int key = keyEvent->keyCode;
+    const ImGuiKey imguiKey = ImGui_ImplEmscripten_VirtualKeyToImGuiKey(key);
+    io.AddKeyEvent(imguiKey, true);
+    if (keyEvent->key && *keyEvent->key && !ImGui_ImplEmscripten_FilterInputKeyCode(keyEvent))
+    {
+        const char* utf8 = keyEvent->key;
+        unsigned int codepoint = 0;
+        unsigned char c = utf8[0];
+        if (c < 0x80) // 1-byte sequence (ASCII)
+        {
+            codepoint = c;
+        }
+        else if ((c & 0xE0) == 0xC0) // 2-byte sequence
+        {
+            codepoint = ((c & 0x1F) << 6) | (utf8[1] & 0x3F);
+        }
+        else if ((c & 0xF0) == 0xE0) // 3-byte sequence
+        {
+            codepoint = ((c & 0x0F) << 12) | ((utf8[1] & 0x3F) << 6) | (utf8[2] & 0x3F);
+        }
+        else if ((c & 0xF8) == 0xF0) // 4-byte sequence
+        {
+            codepoint = ((c & 0x07) << 18) | ((utf8[1] & 0x3F) << 12) |
+                        ((utf8[2] & 0x3F) << 6) | (utf8[3] & 0x3F);
+        }
+
+        io.AddInputCharacter(codepoint);
+    }
+    return EM_TRUE; // Capture event
+}
+
+static EM_BOOL ImGui_ImplEmscripten_KeyPressCallback(int eventType, const EmscriptenKeyboardEvent *keyEvent, void *userData)
+{
     return EM_TRUE; // Capture event
 }
 
@@ -319,10 +375,10 @@ inline float ApplyDeadzone(float value)
     return fminf(fmaxf(value, -1.0f), 1.0f); // Clamp to [-1, 1]
 };
 
-static EM_BOOL ImGui_ImplEmscripten_GamepadCallback(int eventType, const EmscriptenGamepadEvent *gamepadEvent, void *userData)
+static EM_BOOL ImGui_ImplEmscripten_GamepadConnectedCallback(int eventType, const EmscriptenGamepadEvent *gamepadEvent, void *userData)
 {
     ImGuiIO &io = ImGui::GetIO();
-
+    io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     // Handle buttons
     for (int i = 0; i < gamepadEvent->numButtons; ++i)
     {
@@ -404,6 +460,12 @@ static EM_BOOL ImGui_ImplEmscripten_GamepadCallback(int eventType, const Emscrip
     return EM_TRUE;
 }
 
+static EM_BOOL ImGui_ImplEmscripten_GamepadDisconnectCallback(int eventType, const EmscriptenGamepadEvent *gamepadEvent, void *userData)
+{
+    ImGuiIO &io = ImGui::GetIO();
+    io.BackendFlags  &= ~ImGuiBackendFlags_HasGamepad;
+}
+
 static EM_BOOL ImGui_ImplEmscripten_FocusInCallback(int eventType, const EmscriptenFocusEvent *focusEvent, void *userData)
 {
     ImGuiIO &io = ImGui::GetIO();
@@ -420,6 +482,40 @@ static EM_BOOL ImGui_ImplEmscripten_FocusOutCallback(int eventType, const Emscri
     bd->MouseTracked = false;
     io.AddFocusEvent(false);
     return EM_TRUE;
+}
+
+static void ImGui_ImplEmscripten_UpdateMouseCursor()
+{
+
+}
+
+static EM_BOOL ImGui_ImplEmscripten_TouchCallback(int eventType, const EmscriptenTouchEvent *touchEvent, void *userData)
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    for (int i = 0; i < touchEvent->numTouches; ++i)
+    {
+        const EmscriptenTouchPoint& touch = touchEvent->touches[i];
+        if (!touch.isChanged) continue; 
+
+        float x = touch.clientX;
+        float y = touch.clientY;
+
+        if (eventType == EMSCRIPTEN_EVENT_TOUCHSTART)
+        {
+            io.AddMousePosEvent(x, y);
+            io.AddMouseButtonEvent(0, true); 
+        }
+        else if (eventType == EMSCRIPTEN_EVENT_TOUCHEND || eventType == EMSCRIPTEN_EVENT_TOUCHCANCEL)
+        {
+            io.AddMouseButtonEvent(0, false); 
+        }
+        else if (eventType == EMSCRIPTEN_EVENT_TOUCHMOVE)
+        {
+            io.AddMousePosEvent(x, y);
+        }
+    }
+    return EM_TRUE; 
 }
 
 static void ImGui_ImplEmscripten_UpdateMouseData()
@@ -476,26 +572,32 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init()
     io.BackendPlatformName = "imgui_impl_Emscripten";
     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors; // We can honor GetMouseCursor() values (optional)
     io.BackendFlags |= ImGuiBackendFlags_HasSetMousePos;  // We can honor io.WantSetMousePos requests (optional, rarely used)
-    
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGuiPlatformIO& platform = ImGui::GetPlatformIO();
 
     platform.Platform_GetClipboardTextFn = NULL;
     platform.Platform_SetClipboardTextFn = NULL;
     platform.Platform_OpenInShellFn = ImGui_ImplEmscripten_PlatformOpenInShell;
 
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyboardCallback);
-    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyboardCallback);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyDownCallback);
+    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyPressCallback);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyUpCallback);
     emscripten_set_mousedown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
     emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
     emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
-    emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadCallback);
-    emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadCallback);
+    emscripten_set_touchstart_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchend_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchmove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchcancel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
+    emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadConnectedCallback);
+    emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadDisconnectCallback);
     emscripten_set_focusin_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusInCallback);
     emscripten_set_focusout_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusOutCallback);
 
-    bd->LastMouseCursor = ImGuiMouseCursor_COUNT;
-
+    //TODO :: init mouse course
+    //
+    bd->Time = 0;
     return true;
 }
 
@@ -504,17 +606,22 @@ IMGUI_IMPL_API void ImGui_ImplEmscripten_Shutdown()
     ImGui_ImplEmscripten_Data *bd = ImGui_ImplEmscripten_GetBackendData();
     IM_ASSERT(bd != NULL && "No platform backend to shutdown, or already shutdown?");
     ImGuiIO &io = ImGui::GetIO();
-
+    io.BackendFlags &= ~(ImGuiBackendFlags_HasMouseCursors | ImGuiBackendFlags_HasSetMousePos);
     io.GetClipboardTextFn = NULL;
     io.SetClipboardTextFn = NULL;
     io.BackendPlatformName = NULL;
     io.BackendPlatformUserData = NULL;
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, nullptr);
-    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, EM_TRUE, nullptr);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
+    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
+    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
+    emscripten_set_touchstart_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
+    emscripten_set_touchend_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
+    emscripten_set_touchmove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
+    emscripten_set_touchcancel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
     emscripten_set_mousedown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
-    emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, nullptr);
     emscripten_set_focusin_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_TRUE, nullptr);
@@ -536,15 +643,18 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_NewFrame()
     io.DisplaySize.y = static_cast<float>(height);
 
     // Time management
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t current_time = static_cast<uint64_t>(ts.tv_nsec) + static_cast<uint64_t>(ts.tv_sec) * 1000000000ULL;
-
-    io.DeltaTime = bd->Time > 0 ? (float)(current_time - bd->Time) / bd->TicksPerSecond : (1.0f / 60.0f);
+  
+    double current_time = emscripten_get_now() / 1000.0;
+    if (current_time <= bd->Time)
+    {
+        current_time = bd->Time + 0.00001f;
+    }
+    io.DeltaTime = bd->Time > 0.0 ? (float)(current_time - bd->Time) : (float)(1.0f / 60.0f);
     bd->Time = current_time;
 
     // Input updates
     ImGui_ImplEmscripten_UpdateMouseData();
+    ImGui_ImplEmscripten_UpdateMouseCursor();
     ImGui_ImplEmscripten_UpdateGamepads();
 
     return true;
