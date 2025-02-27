@@ -1,3 +1,3 @@
 #!/bin/bash
 
-emrun bin/index.html
+emrun --port 8080 .

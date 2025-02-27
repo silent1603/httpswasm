@@ -7,9 +7,9 @@
 #include <GLES2/gl2platform.h>
 #include <stdio.h>
 #define IMGUI_IMPL_OPENGL_ES3
-#include "ui/imgui.h"
-#include "ui/imgui_impl_opengl3.h"
-#include "ui/imgui_impl_emscripten.h"
+#include "core/ui/imgui.h"
+#include "core/ui/imgui_impl_opengl3.h"
+#include "core/ui/imgui_impl_emscripten.h"
 #include <iostream>
 ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 EmscriptenWebGLContextAttributes webgl_attributes;
@@ -32,7 +32,7 @@ const char *get_glsl_version()
 bool initialize_webgl()
 {
 #ifdef DEBUG
-    emscripten_set_canvas_size(1720,980);
+    emscripten_set_canvas_element_size("#canvas",1720,980);
 #endif
     emscripten_webgl_init_context_attributes(&webgl_attributes);
     webgl_attributes.alpha = 0;

@@ -2,8 +2,8 @@
 // This needs to be used along with a Renderer (Webgpu , webgl)
 
 // Implemented features:
-//  [X] Platform: Clipboard support
-//  [ ] Platform: Mouse cursor shape and visibility. Disable with XK_io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange'.
+//  [ ] Platform: Clipboard support
+//  [ ] Platform: Mouse cursor shape and visibility.
 //  [X] Platform: Keyboard arrays indexed using
 //  [X] Platform: Gamepad support. 
 
