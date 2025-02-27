@@ -2,7 +2,7 @@
 // This needs to be used along with a Renderer (Webgpu , webgl)
 
 // Implemented features:
-//  [X] Platform: Clipboard support // TO DO : Fix  ImGui_ImplEmscripten_GetFromClipBoard error  NotAllowedError: Failed to execute 'readText' on 'Clipboard': Document is not focused.
+//  [X] Platform: Clipboard support // Need Improvement : Async in JS make paste cache is delay
 //  [ ] Platform: Mouse cursor shape and visibility.
 //  [X] Platform: Keyboard arrays indexed using
 //  [X] Platform: Gamepad support. 
@@ -17,12 +17,15 @@
 #include <emscripten/key_codes.h>
 #include <emscripten/html5.h>
 #include <math.h>
+
+#include <iostream>
+
 const float DEADZONE = 0.3f; // Adjust to taste
 struct ImGui_ImplEmscripten_Data
 {
     bool             MouseTracked;
     ImGuiMouseCursor MouseCursors[ImGuiMouseCursor_COUNT];
-    const char*      CanvasSelector;
+    const char*      CanvasSelectorId;
     char             clipboardBuffer[1024] = "";
     double           Time;
     ImGui_ImplEmscripten_Data() { memset((void *)this, 0, sizeof(*this)); }
@@ -55,6 +58,16 @@ EM_JS(void, ImGui_ImplEmscripten_CopyToClipBoard, (ImGuiContext* ctx, const char
 }
 )
 
+EMSCRIPTEN_KEEPALIVE
+void ImGui_ImplEmscripten_OnClipboardTextRetrieved(const char* text)
+{
+    ImGui_ImplEmscripten_Data* bd = ImGui_ImplEmscripten_GetBackendData();
+    if (bd && text)
+    {
+        snprintf(bd->clipboardBuffer, sizeof(bd->clipboardBuffer), "%s", text);
+    }
+}
+
 EM_JS(void, ImGui_ImplEmscripten_GetFromClipBoard, (),
 {
     navigator.clipboard.readText().then(function(text) {
@@ -64,15 +77,6 @@ EM_JS(void, ImGui_ImplEmscripten_GetFromClipBoard, (),
     })
 }
 )
-
-void ImGui_ImplEmscripten_OnClipboardTextRetrieved(const char* text)
-{
-    ImGui_ImplEmscripten_Data* bd = ImGui_ImplEmscripten_GetBackendData();
-    if (bd && text)
-    {
-        snprintf(bd->clipboardBuffer, sizeof(bd->clipboardBuffer), "%s", text);
-    }
-}
 
 const char* ImGui_ImplEmscripten_GetClipboardText(ImGuiContext* ctx)
 {
@@ -85,7 +89,21 @@ const char* ImGui_ImplEmscripten_GetClipboardText(ImGuiContext* ctx)
     return "";
 }
 
+static void ImGui_ImplEmscripten_FocusCanvas(const char* target) {
+    char script[256];
 
+    // JavaScript to check focus and set focus if needed (single-line string)
+    snprintf(script, sizeof(script),
+             "(() => {"
+             "  var el = document.querySelector('%s');"
+             "  if (el && document.activeElement !== el) { el.focus(); return 1; }"
+             "  return 0;"
+             "})();", target);
+
+    int result = emscripten_run_script_int(script);
+    std::cout << "Focus result for target '" << target << "': " 
+              << (result ? "focused" : "already focused or not found") 
+              << std::endl;
 }
 
 
@@ -394,16 +412,21 @@ static EM_BOOL ImGui_ImplEmscripten_MouseCallback(int eventType, const Emscripte
 {
     ImGuiIO &io = ImGui::GetIO();
     ImGui_ImplEmscripten_Data *bd = ImGui_ImplEmscripten_GetBackendData();
-
+    
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN || eventType == EMSCRIPTEN_EVENT_MOUSEUP)
     {
         ImGuiMouseButton button = (mouseEvent->button == 0) ? ImGuiMouseButton_Left : (mouseEvent->button == 2 ? ImGuiMouseButton_Right : ImGuiMouseButton_Middle);
         io.AddMouseButtonEvent(button, eventType == EMSCRIPTEN_EVENT_MOUSEDOWN);
+        if(eventType == EMSCRIPTEN_EVENT_MOUSEDOWN)
+        {
+           ImGui_ImplEmscripten_FocusCanvas(bd->CanvasSelectorId);
+        }
     }
     else if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE)
     {
         io.AddMousePosEvent( mouseEvent->targetX,mouseEvent->targetY);
     }
+
     return EM_TRUE;
 }
 
@@ -542,6 +565,11 @@ static void ImGui_ImplEmscripten_UpdateMouseCursor()
 
 }
 
+static EM_BOOL ImGui_ImplEmscripten_FocusCallback(int eventType, const EmscriptenFocusEvent *e, void *userData)
+{
+    return EM_TRUE; 
+}
+
 static EM_BOOL ImGui_ImplEmscripten_TouchCallback(int eventType, const EmscriptenTouchEvent *touchEvent, void *userData)
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -614,7 +642,10 @@ static void ImGui_ImplEmscripten_UpdateGamepads()
     }
 }
 
-IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init(const char* canvasSelector)
+
+}
+
+IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init(const char* CanvasSelectorId)
 {
     ImGuiIO &io = ImGui::GetIO();
     IM_ASSERT(io.BackendPlatformUserData == NULL && "Already initialized a platform backend!");
@@ -635,23 +666,24 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init(const char* canvasSelector)
     //TODO :: init mouse course
     //
     bd->Time = 0;
-    bd->CanvasSelector = canvasSelector;
+    bd->CanvasSelectorId = CanvasSelectorId;
     
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyDownCallback);
     emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyPressCallback);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyUpCallback);
-    emscripten_set_mousedown_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_mouseup_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_mousemove_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
-    emscripten_set_touchstart_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_touchend_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_touchmove_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_touchcancel_callback(bd->CanvasSelector, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
-    emscripten_set_wheel_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
+    emscripten_set_mousedown_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
+    emscripten_set_mouseup_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
+    emscripten_set_mousemove_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, ImGui_ImplEmscripten_MouseCallback);
+    emscripten_set_touchstart_callback(bd->CanvasSelectorId, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchend_callback(bd->CanvasSelectorId, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchmove_callback(bd->CanvasSelectorId, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_touchcancel_callback(bd->CanvasSelectorId, 0, EM_TRUE, ImGui_ImplEmscripten_TouchCallback);
+    emscripten_set_wheel_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, ImGui_ImplEmscripten_WhellCallback);
     emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadConnectedCallback);
     emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, ImGui_ImplEmscripten_GamepadDisconnectCallback);
-    emscripten_set_focusin_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusInCallback);
-    emscripten_set_focusout_callback(bd->CanvasSelector, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusOutCallback);
+    emscripten_set_focus_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusCallback);
+    emscripten_set_focusin_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusInCallback);
+    emscripten_set_focusout_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, ImGui_ImplEmscripten_FocusOutCallback);
 
 
     return true;
@@ -670,18 +702,19 @@ IMGUI_IMPL_API void ImGui_ImplEmscripten_Shutdown()
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, nullptr);
-    emscripten_set_wheel_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
-    emscripten_set_touchstart_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
-    emscripten_set_touchend_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
-    emscripten_set_touchmove_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
-    emscripten_set_touchcancel_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
-    emscripten_set_mousedown_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
-    emscripten_set_mouseup_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
-    emscripten_set_mousemove_callback(bd->CanvasSelector, nullptr, EM_TRUE, nullptr);
+    emscripten_set_wheel_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, nullptr);
+    emscripten_set_touchstart_callback(bd->CanvasSelectorId, 0, EM_TRUE, nullptr);
+    emscripten_set_touchend_callback(bd->CanvasSelectorId, 0, EM_TRUE, nullptr);
+    emscripten_set_touchmove_callback(bd->CanvasSelectorId, 0, EM_TRUE, nullptr);
+    emscripten_set_touchcancel_callback(bd->CanvasSelectorId, 0, EM_TRUE, nullptr);
+    emscripten_set_mousedown_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, nullptr);
+    emscripten_set_mouseup_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, nullptr);
+    emscripten_set_mousemove_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepadconnected_callback(nullptr, EM_TRUE, nullptr);
     emscripten_set_gamepaddisconnected_callback(nullptr, EM_TRUE, nullptr);
-    emscripten_set_focusin_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
-    emscripten_set_focusout_callback(bd->CanvasSelector, 0, EM_TRUE, nullptr);
+    emscripten_set_focus_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, nullptr);
+    emscripten_set_focusin_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, nullptr);
+    emscripten_set_focusout_callback(bd->CanvasSelectorId, nullptr, EM_TRUE, nullptr);
     IM_DELETE(bd);
 }
 

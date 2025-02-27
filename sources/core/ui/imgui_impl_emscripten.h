@@ -12,7 +12,7 @@
 #include "imgui.h"      // IMGUI_IMPL_API
 #ifndef IMGUI_DISABLE
 
-IMGUI_IMPL_API bool     ImGui_ImplEmscripten_Init(const char* canvasSelector);
+IMGUI_IMPL_API bool     ImGui_ImplEmscripten_Init(const char* canvasSelectorId);
 IMGUI_IMPL_API void     ImGui_ImplEmscripten_Shutdown();
 IMGUI_IMPL_API bool     ImGui_ImplEmscripten_NewFrame();
 #endif
