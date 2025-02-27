@@ -18,26 +18,76 @@
 #include <emscripten/html5.h>
 #include <math.h>
 const float DEADZONE = 0.3f; // Adjust to taste
-
-EM_JS(void, ImGui_ImplEmscripten_OpenURL, (char const* url), { url = url ? UTF8ToString(url) : null; if (url) window.open(url, '_blank'); });
-
 struct ImGui_ImplEmscripten_Data
 {
     bool             MouseTracked;
     ImGuiMouseCursor MouseCursors[ImGuiMouseCursor_COUNT];
     const char*      CanvasSelector;
-    double          Time ;
+    char             clipboardBuffer[1024] = "";
+    double           Time;
     ImGui_ImplEmscripten_Data() { memset((void *)this, 0, sizeof(*this)); }
 };
 
-// Backend data stored in io.BackendPlatformUserData to allow support for multiple Dear ImGui contexts
-// It is STRONGLY preferred that you use docking branch with multi-viewports (== single Dear ImGui context + multiple windows) instead of multiple Dear ImGui contexts.
-// FIXME: multi-context support is not well tested and probably dysfunctional in this backend.
-// FIXME: some shared resources (mouse cursor shape, gamepad) are mishandled when using multi-context.
 static ImGui_ImplEmscripten_Data* ImGui_ImplEmscripten_GetBackendData()
 {
     return ImGui::GetCurrentContext() ? (ImGui_ImplEmscripten_Data *)ImGui::GetIO().BackendPlatformUserData : NULL;
 }
+
+extern "C"
+{
+EM_JS(void, ImGui_ImplEmscripten_OpenURL, (char const* url),
+{ 
+    url = url ? UTF8ToString(url) : null; 
+    if (url)
+    {
+        window.open(url, '_blank');
+    } 
+}
+);
+
+EM_JS(void, ImGui_ImplEmscripten_CopyToClipBoard, (ImGuiContext* ctx, const char* text),
+{
+    text = text ? UTF8ToString(text) : null; 
+    if (text)
+    {
+        navigator.clipboard.writeText(text);
+    }
+}
+)
+
+EM_JS(void, ImGui_ImplEmscripten_GetFromClipBoard, (),
+{
+    navigator.clipboard.readText().then(function(text) {
+        if (text) {
+            ccall('ImGui_ImplEmscripten_OnClipboardTextRetrieved', 'void', ['string'], [text]);
+        }
+    })
+}
+)
+
+void ImGui_ImplEmscripten_OnClipboardTextRetrieved(const char* text)
+{
+    ImGui_ImplEmscripten_Data* bd = ImGui_ImplEmscripten_GetBackendData();
+    if (bd && text)
+    {
+        snprintf(bd->clipboardBuffer, sizeof(bd->clipboardBuffer), "%s", text);
+    }
+}
+
+const char* ImGui_ImplEmscripten_GetClipboardText(ImGuiContext* ctx)
+{
+    ImGui_ImplEmscripten_Data* bd = ImGui_ImplEmscripten_GetBackendData();
+    if (bd)
+    {
+        ImGui_ImplEmscripten_GetFromClipBoard(); // Fetch clipboard text (async)
+        return bd->clipboardBuffer; // Return the current buffer (may update when JS resolves)
+    }
+    return "";
+}
+
+
+}
+
 
 static bool ImGui_ImplEmscripten_PlatformOpenInShell(ImGuiContext* context,const char* url)
 {
@@ -578,8 +628,8 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init(const char* canvasSelector)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     ImGuiPlatformIO& platform = ImGui::GetPlatformIO();
 
-    platform.Platform_GetClipboardTextFn = NULL;
-    platform.Platform_SetClipboardTextFn = NULL;
+    platform.Platform_GetClipboardTextFn = ImGui_ImplEmscripten_GetClipboardText;
+    platform.Platform_SetClipboardTextFn = ImGui_ImplEmscripten_CopyToClipBoard;
     platform.Platform_OpenInShellFn = ImGui_ImplEmscripten_PlatformOpenInShell;
 
     //TODO :: init mouse course
