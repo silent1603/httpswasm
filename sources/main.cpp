@@ -10,7 +10,7 @@
 #include "core/ui/imgui.h"
 #include "core/ui/imgui_impl_opengl3.h"
 #include "core/ui/imgui_impl_emscripten.h"
-#include <iostream>
+
 ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 EmscriptenWebGLContextAttributes webgl_attributes;
 EMSCRIPTEN_WEBGL_CONTEXT_HANDLE webgl_context;

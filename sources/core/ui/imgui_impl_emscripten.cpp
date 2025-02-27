@@ -11,7 +11,7 @@
 #ifndef IMGUI_DISABLE
 #define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 #include "imgui_impl_emscripten.h"
-#include <stdio.h>
+
 #include <emscripten.h>
 #include <string.h>
 #include <emscripten/key_codes.h>

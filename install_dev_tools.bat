@@ -1,10 +1,10 @@
 @echo off
 
-mkdir Tools
-pushd Tools
+mkdir tools
+pushd tools
 git clone https://github.com/emscripten-core/emsdk.git
-cd emsdk
+pushd emsdk
 git pull
 emsdk.bat install latest
-emsdk.bat activate latest
+popd
 popd
