@@ -2,7 +2,7 @@
 // This needs to be used along with a Renderer (Webgpu , webgl)
 
 // Implemented features:
-//  [ ] Platform: Clipboard support
+//  [X] Platform: Clipboard support // TO DO : Fix  ImGui_ImplEmscripten_GetFromClipBoard error  NotAllowedError: Failed to execute 'readText' on 'Clipboard': Document is not focused.
 //  [ ] Platform: Mouse cursor shape and visibility.
 //  [X] Platform: Keyboard arrays indexed using
 //  [X] Platform: Gamepad support. 
