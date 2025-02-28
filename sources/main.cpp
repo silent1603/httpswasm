@@ -31,9 +31,6 @@ const char *get_glsl_version()
 
 bool initialize_webgl()
 {
-#ifdef DEBUG
-    emscripten_set_canvas_element_size("#canvas",1720,980);
-#endif
     emscripten_webgl_init_context_attributes(&webgl_attributes);
     webgl_attributes.alpha = 0;
     webgl_attributes.depth = 0;

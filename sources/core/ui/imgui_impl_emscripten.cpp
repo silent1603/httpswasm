@@ -21,12 +21,14 @@
 #include <iostream>
 
 const float DEADZONE = 0.3f; // Adjust to taste
+const int clipboardBufferSize = 1024;
+char  clipboardBuffer[clipboardBufferSize] = "";
+
 struct ImGui_ImplEmscripten_Data
 {
     bool             MouseTracked;
     ImGuiMouseCursor MouseCursors[ImGuiMouseCursor_COUNT];
     const char*      CanvasSelectorId;
-    char             clipboardBuffer[1024] = "";
     double           Time;
     ImGui_ImplEmscripten_Data() { memset((void *)this, 0, sizeof(*this)); }
 };
@@ -58,54 +60,16 @@ EM_JS(void, ImGui_ImplEmscripten_CopyToClipBoard, (ImGuiContext* ctx, const char
 }
 )
 
-EMSCRIPTEN_KEEPALIVE
-void ImGui_ImplEmscripten_OnClipboardTextRetrieved(const char* text)
-{
-    ImGui_ImplEmscripten_Data* bd = ImGui_ImplEmscripten_GetBackendData();
-    if (bd && text)
-    {
-        snprintf(bd->clipboardBuffer, sizeof(bd->clipboardBuffer), "%s", text);
-    }
-}
-
-EM_JS(void, ImGui_ImplEmscripten_GetFromClipBoard, (),
-{
-    navigator.clipboard.readText().then(function(text) {
-        if (text) {
-            ccall('ImGui_ImplEmscripten_OnClipboardTextRetrieved', 'void', ['string'], [text]);
-        }
-    })
-}
-)
-
+//clipboard event trigger in template html
 const char* ImGui_ImplEmscripten_GetClipboardText(ImGuiContext* ctx)
 {
     ImGui_ImplEmscripten_Data* bd = ImGui_ImplEmscripten_GetBackendData();
     if (bd)
     {
-        ImGui_ImplEmscripten_GetFromClipBoard(); // Fetch clipboard text (async)
-        return bd->clipboardBuffer; // Return the current buffer (may update when JS resolves)
+        return clipboardBuffer; 
     }
     return "";
 }
-
-static void ImGui_ImplEmscripten_FocusCanvas(const char* target) {
-    char script[256];
-
-    // JavaScript to check focus and set focus if needed (single-line string)
-    snprintf(script, sizeof(script),
-             "(() => {"
-             "  var el = document.querySelector('%s');"
-             "  if (el && document.activeElement !== el) { el.focus(); return 1; }"
-             "  return 0;"
-             "})();", target);
-
-    int result = emscripten_run_script_int(script);
-    std::cout << "Focus result for target '" << target << "': " 
-              << (result ? "focused" : "already focused or not found") 
-              << std::endl;
-}
-
 
 static bool ImGui_ImplEmscripten_PlatformOpenInShell(ImGuiContext* context,const char* url)
 {
@@ -417,10 +381,6 @@ static EM_BOOL ImGui_ImplEmscripten_MouseCallback(int eventType, const Emscripte
     {
         ImGuiMouseButton button = (mouseEvent->button == 0) ? ImGuiMouseButton_Left : (mouseEvent->button == 2 ? ImGuiMouseButton_Right : ImGuiMouseButton_Middle);
         io.AddMouseButtonEvent(button, eventType == EMSCRIPTEN_EVENT_MOUSEDOWN);
-        if(eventType == EMSCRIPTEN_EVENT_MOUSEDOWN)
-        {
-           ImGui_ImplEmscripten_FocusCanvas(bd->CanvasSelectorId);
-        }
     }
     else if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE)
     {
