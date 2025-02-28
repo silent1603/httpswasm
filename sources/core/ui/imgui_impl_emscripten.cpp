@@ -57,18 +57,27 @@ EM_JS(void, ImGui_ImplEmscripten_CopyToClipBoard, (ImGuiContext* ctx, const char
     {
         navigator.clipboard.writeText(text);
     }
-}
-)
+})
+
+EM_JS(void, ImGui_ImplEmscripten_GetFromClipBoard, (char* text, int maxSize), {
+    (async () => {
+        try {
+            const str = await navigator.clipboard.readText(); // Wait for async result
+            const size = Math.min(lengthBytesUTF8(str), maxSize - 1); 
+            stringToUTF8(str, text, size + 1); // Copy text and null-terminate
+        } catch (err) {
+            console.error("Failed to read clipboard:", err);
+            stringToUTF8("", text, maxSize); // Fallback to empty string
+        }
+    })();
+});
+
 
 //clipboard event trigger in template html
 const char* ImGui_ImplEmscripten_GetClipboardText(ImGuiContext* ctx)
 {
-    ImGui_ImplEmscripten_Data* bd = ImGui_ImplEmscripten_GetBackendData();
-    if (bd)
-    {
-        return clipboardBuffer; 
-    }
-    return "";
+    ImGui_ImplEmscripten_GetFromClipBoard(clipboardBuffer, clipboardBufferSize);
+    return clipboardBuffer; 
 }
 
 static bool ImGui_ImplEmscripten_PlatformOpenInShell(ImGuiContext* context,const char* url)
@@ -627,7 +636,27 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init(const char* CanvasSelectorId)
     //
     bd->Time = 0;
     bd->CanvasSelectorId = CanvasSelectorId;
-    
+    EM_ASM({
+        var canvas = Module.canvas;
+        canvas.addEventListener('click', function() {
+            if (document.activeElement !== canvas) {
+                canvas.focus();
+            }
+        });
+
+        canvas.onpaste = (event) => {
+            const clipboardText = event.clipboardData.getData('text/plain');
+            console.log('Pasted text:', clipboardText);
+            event.preventDefault(); 
+        };
+        
+        document.onpaste =  event => {
+            const clipboardText = event.clipboardData.getData("text/plain");
+            console.log("Pasted text:", clipboardText);
+            event.preventDefault();
+        };
+    });
+
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyDownCallback);
     emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyPressCallback);
     emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyUpCallback);

@@ -19,27 +19,17 @@
             overflow: hidden;
         }
 
-        #canvasContainer {
+        canvas {
+            display: block;
             width: 100vw;
             height: 100vh;
             background-color: black;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
         }
     </style>
 </head>
 
 <body>
-    <div id="canvasContainer" contenteditable="true">
-        <canvas id="canvas" tabindex="0"></canvas>
-    </div>
+    <canvas id="canvas" tabindex="0"></canvas>
 
     <script>
         // Define Module before Emscripten initializes it
@@ -52,29 +42,6 @@
             setStatus: (text) => console.log(text),
             onRuntimeInitialized: function () {
                 console.log('WASM runtime initialized');
-
-                const canvas = Module.canvas;
-                const canvasContainer = document.getElementById('canvasContainer');
-
-                canvas.addEventListener('click', () => {
-                    console.log('Canvas focused');
-                    canvas.focus();
-                });
-
-                canvasContainer.addEventListener('paste', (event) => {
-                    const clipboardText = event.clipboardData?.getData('text');
-                    if (!clipboardText) return;
-
-                    if (Module.clipboardBuffer && Module.clipboardBufferSize) {
-                        Module.stringToUTF8(clipboardText, Module.clipboardBuffer, Module.clipboardBufferSize);
-                        console.log('Pasted text:', clipboardText);
-                    } else {
-                        console.warn('Clipboard buffer not available');
-                    }
-                    event.preventDefault();
-                    canvasContainer.textContent = '';
-                });
-
                 window.addEventListener('resize', resizeCanvas);
                 resizeCanvas();
             }
@@ -82,10 +49,9 @@
 
         function resizeCanvas() {
             const canvas = Module.canvas;
-            const container = document.getElementById('canvasContainer');
-            if (canvas && container) {
-                canvas.width = container.clientWidth;
-                canvas.height = container.clientHeight;
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
             }
         }
     </script>
