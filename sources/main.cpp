@@ -7,9 +7,12 @@
 #include <GLES2/gl2platform.h>
 #include <stdio.h>
 #define IMGUI_IMPL_OPENGL_ES3
-#include "core/ui/imgui.h"
-#include "core/ui/imgui_impl_opengl3.h"
-#include "core/ui/imgui_impl_emscripten.h"
+#include "externs/imgui/imgui.h"
+#include "externs/imgui/imgui_impl_opengl3.h"
+#include "externs/imgui/imgui_impl_emscripten.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "externs/stb/stb_image.h"
 
 ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 EmscriptenWebGLContextAttributes webgl_attributes;
@@ -62,6 +65,7 @@ bool app_init()
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Keyboard support
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Gamepad support
+
     io.IniFilename = nullptr;                             // Disable saving .ini
 
     ImGui::StyleColorsDark();
