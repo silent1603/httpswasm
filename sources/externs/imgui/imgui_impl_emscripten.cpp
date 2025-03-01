@@ -2,7 +2,7 @@
 // This needs to be used along with a Renderer (Webgpu , webgl)
 
 // Implemented features:
-//  [X] Platform: Clipboard support // Need Improvement : Async in JS make paste cache is delay
+//  [X] Platform: Clipboard support 
 //  [ ] Platform: Mouse cursor shape and visibility.
 //  [X] Platform: Keyboard arrays indexed using
 //  [X] Platform: Gamepad support. 
@@ -23,7 +23,7 @@
 const float DEADZONE = 0.3f; // Adjust to taste
 const int clipboardBufferSize = 1024;
 char  clipboardBuffer[clipboardBufferSize] = "";
-
+volatile bool clipboardDone = false;
 struct ImGui_ImplEmscripten_Data
 {
     bool             MouseTracked;
@@ -59,24 +59,42 @@ EM_JS(void, ImGui_ImplEmscripten_CopyToClipBoard, (ImGuiContext* ctx, const char
     }
 })
 
-EM_JS(void, ImGui_ImplEmscripten_GetFromClipBoard, (char* text, int maxSize), {
-    (async () => {
-        try {
-            const str = await navigator.clipboard.readText(); // Wait for async result
-            const size = Math.min(lengthBytesUTF8(str), maxSize - 1); 
-            stringToUTF8(str, text, size + 1); // Copy text and null-terminate
-        } catch (err) {
-            console.error("Failed to read clipboard:", err);
-            stringToUTF8("", text, maxSize); // Fallback to empty string
-        }
-    })();
-});
-
-
-//clipboard event trigger in template html
 const char* ImGui_ImplEmscripten_GetClipboardText(ImGuiContext* ctx)
 {
-    ImGui_ImplEmscripten_GetFromClipBoard(clipboardBuffer, clipboardBufferSize);
+    clipboardDone = false;
+    EM_ASM(
+        {
+            var bufferPtr = $0;       
+            var maxSize = $1;         
+            var donePtr = $2;        
+            var maxTextLength = maxSize - 1;  
+            var minTextLength = 1;  
+            navigator.clipboard.readText()
+                .then(function(text) {
+
+                    if (text.length < minTextLength) {
+                        HEAP8[bufferPtr] = '\0';
+                    } else {
+                        var safeLength = Math.min(text.length, maxTextLength);
+                        text = text.substring(0, safeLength);
+                        stringToUTF8(text, bufferPtr, safeLength + 1);
+                    }
+                    HEAP8[donePtr] = 1;  // Set clipboardDone to true
+                })
+                .catch(function(err) {
+                    console.error('Failed to read clipboard: ', err);
+                    HEAP8[donePtr] = 1;  // Set clipboardDone to true on error too
+                });
+        },
+        clipboardBuffer,
+        clipboardBufferSize,
+        &clipboardDone
+    );
+    
+    while (!clipboardDone) {
+        emscripten_sleep(1); // Requires -s ASYNCIFY=1
+    }
+
     return clipboardBuffer; 
 }
 
@@ -643,18 +661,6 @@ IMGUI_IMPL_API bool ImGui_ImplEmscripten_Init(const char* CanvasSelectorId)
                 canvas.focus();
             }
         });
-
-        canvas.onpaste = (event) => {
-            const clipboardText = event.clipboardData.getData('text/plain');
-            console.log('Pasted text:', clipboardText);
-            event.preventDefault(); 
-        };
-        
-        document.onpaste =  event => {
-            const clipboardText = event.clipboardData.getData("text/plain");
-            console.log("Pasted text:", clipboardText);
-            event.preventDefault();
-        };
     });
 
     emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, EM_TRUE, ImGui_ImplEmscripten_KeyDownCallback);
