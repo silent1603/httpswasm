@@ -18,7 +18,7 @@ echo Template file path: %template_html%
 
 pushd .\bin
 echo %cpp_files% %c_files%
-em++ %cpp_files% %c_files% -fno-rtti -fno-exceptions -s WASM=1 -sMAX_WEBGL_VERSION=2 -s ASSERTIONS=0 -s GL_ASSERTIONS -lGL -sFILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1  -s NO_EXIT_RUNTIME=0 -O2 --shell-file %template_html% -o index.html
+em++ %cpp_files% %c_files% -fno-rtti -fno-exceptions -s WASM=1 -sMAX_WEBGL_VERSION=2 -s ASSERTIONS=0 -s GL_ASSERTIONS  -s ASYNCIFY=1 -s ASYNCIFY_STACK_SIZE=16384 -lGL -sFILESYSTEM=1 -s ALLOW_MEMORY_GROWTH=1  -s NO_EXIT_RUNTIME=0 -O2 --shell-file %template_html% -o index.html
 popd
 
 exit /b
