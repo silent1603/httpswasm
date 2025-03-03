@@ -84,7 +84,7 @@
     </div>
     <script>
         var Module = {
-            preRun: [],
+            preRun: [initIDBFS],
             postRun: [],
             print: (text) => console.log(text),
             printErr: (text) => console.error(text),
@@ -121,6 +121,19 @@
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
             }
+        }
+
+        function initIDBFS ()
+        {
+            addRunDependency('syncfs')
+
+            FS.mkdir('/data')
+            FS.mount(IDBFS,{ root: '.' }, '/data')
+            FS.syncfs(true, function (err) {
+            if (err) throw err
+                removeRunDependency('syncfs')
+                console.log("FS Synced")
+            });
         }
     </script>
 

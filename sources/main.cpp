@@ -1,6 +1,9 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#ifdef DEBUG
+#include <emscripten/console.h> 
+#endif
 #endif
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
@@ -65,9 +68,7 @@ bool app_init()
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Keyboard support
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Gamepad support
-
-    io.IniFilename = nullptr;                             // Disable saving .ini
-
+    io.IniFilename = "/data/imgui.ini";
     ImGui::StyleColorsDark();
     ImGui_ImplEmscripten_Init("#canvas");
     ImGui_ImplOpenGL3_Init(get_glsl_version());

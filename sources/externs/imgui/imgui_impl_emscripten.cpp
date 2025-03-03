@@ -23,7 +23,7 @@
 const float DEADZONE = 0.3f; // Adjust to taste
 const int clipboardBufferSize = 1024;
 char  clipboardBuffer[clipboardBufferSize] = "";
-volatile bool clipboardDone = false;
+
 struct ImGui_ImplEmscripten_Data
 {
     bool             MouseTracked;
@@ -59,42 +59,20 @@ EM_JS(void, ImGui_ImplEmscripten_CopyToClipBoard, (ImGuiContext* ctx, const char
     }
 })
 
+EM_ASYNC_JS(void, ImGui_ImplEmscripten_GetFromClipBoard, (char* text, int maxSize), {
+    try {
+        const str = await navigator.clipboard.readText(); // Wait for async result
+        const size = Math.min(lengthBytesUTF8(str), maxSize - 1);
+        stringToUTF8(str, text, size + 1); // Copy text and null-terminate
+    } catch (err) {
+        console.error("Failed to read clipboard:", err);
+        stringToUTF8("", text, maxSize); // Fallback to empty string
+    }
+});
+
 const char* ImGui_ImplEmscripten_GetClipboardText(ImGuiContext* ctx)
 {
-    clipboardDone = false;
-    EM_ASM(
-        {
-            var bufferPtr = $0;       
-            var maxSize = $1;         
-            var donePtr = $2;        
-            var maxTextLength = maxSize - 1;  
-            var minTextLength = 1;  
-            navigator.clipboard.readText()
-                .then(function(text) {
-
-                    if (text.length < minTextLength) {
-                        HEAP8[bufferPtr] = '\0';
-                    } else {
-                        var safeLength = Math.min(text.length, maxTextLength);
-                        text = text.substring(0, safeLength);
-                        stringToUTF8(text, bufferPtr, safeLength + 1);
-                    }
-                    HEAP8[donePtr] = 1;  // Set clipboardDone to true
-                })
-                .catch(function(err) {
-                    console.error('Failed to read clipboard: ', err);
-                    HEAP8[donePtr] = 1;  // Set clipboardDone to true on error too
-                });
-        },
-        clipboardBuffer,
-        clipboardBufferSize,
-        &clipboardDone
-    );
-    
-    while (!clipboardDone) {
-        emscripten_sleep(1); // Requires -s ASYNCIFY=1
-    }
-
+    ImGui_ImplEmscripten_GetFromClipBoard(clipboardBuffer, clipboardBufferSize);
     return clipboardBuffer; 
 }
 

@@ -1115,6 +1115,11 @@ CODE
 #include <TargetConditionals.h>
 #endif
 
+// [EMSCRIPTE] broswer specific includes
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 // Visual Studio warnings
 #ifdef _MSC_VER
 #pragma warning (disable: 4127)             // condition expression is constant
@@ -14694,6 +14699,15 @@ void ImGui::SaveIniSettingsToDisk(const char* ini_filename)
         return;
     ImFileWrite(ini_data, sizeof(char), ini_data_size, f);
     ImFileClose(f);
+#ifdef __EMSCRIPTEN__
+EM_ASM(
+    FS.syncfs(false, function(err) {
+        if (err) {
+            console.warn("Error saving:", err);
+        }
+    })
+);
+#endif
 }
 
 // Call registered handlers (e.g. SettingsHandlerWindow_WriteAll() + custom handlers) to write their stuff into a text buffer
